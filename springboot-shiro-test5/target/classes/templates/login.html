@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+	xmlns:shiro="http://www.pollix.at/thymeleaf/shiro">
+<head>
+<meta charset="UTF-8" />
+<title>login</title>
+<script th:src="@{assets/js/jquery.min.js}"></script>
+</head>
+<body>
+	<form action="" method="post" id="inputForm">
+		用户名：<input name="username"><br>
+		密码：<input name="password"><br>
+		<button type="button" id="submitBtn">提交</button>
+	</form>
+	<script type="text/javascript">
+		$(function() {
+			$('#submitBtn').click(function() {
+				$.ajax({
+					url: "/login",
+					data:$("form").serialize(),
+					type: "post",
+					success: function(result) {
+						if (result) {
+							window.location.href = "/main"
+						}
+					}
+				})
+			})
+		})
+	</script>
+</body>
+</html>

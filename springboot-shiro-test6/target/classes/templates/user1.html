@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+	xmlns:shiro="http://www.pollix.at/thymeleaf/shiro">
+<head>
+<meta charset="UTF-8" />
+<title>user1页面</title>
+<script th:src="@{js/jquery.min.js}"></script>
+</head>
+<body>
+需要user1角色才能进入
+<div shiro:hasRole="admin">admin角色</div>
+<div shiro:hasRole="user1">user1角色</div>
+<div shiro:hasRole="user2">user2角色</div>
+<div shiro:hasPermission="permission11">permission11权限</div>
+<div shiro:hasPermission="permission12">permission12权限</div>
+<div shiro:hasPermission="permission21">permission21权限</div>
+<div shiro:hasPermission="permission22">permission22权限</div>
+</body>
+</html>

@@ -1,0 +1,90 @@
+
+静态文件匿名访问：
+	filterChainDefinitionMap.put("/assets/**", "anon"); //静态资源
+	如：
+		/springboot-shiro-test5/src/main/resources/static/assets/js/jquery.min.js
+		<script th:src="@{assets/js/jquery.min.js}"></script>
+		浏览器能直接访问则说明配置有效：http://localhost:8080/assets/js/jquery.min.js
+
+
+filterChain基于短路机制，即最先匹配原则。
+	如/user/**=anon
+	/user/aa=authc 永远不会执行
+
+
+过滤器：
+anon	--AnonymousFilter类，匿名拦截器，即不需要登录即可访问。一般用于静态资源过滤。如/static/**=anon
+authc	--FormAuthenticationFilter类，基于表单拦截器，若没有登录会跳到相应的登陆页面。如/**=authc
+authcBasic	--BasicHttpAuthenticationFilter类，Basic HTTP身份验证拦截器
+logout	--LogoutFilter类，退出拦截器，主要属性：redirectUrl-退出成功后重定向的地址。如/logout=logout
+noSessionCreation	--NoSessionCreationFilter类，不创建会话拦截器。调用subject.getSession(false)没问题，调用subject.getSession(true)抛出异常
+perms	--PermissionsAuthorizationFilter类，权限拦截器，验证用户是否拥有该权限。如/user/form=perms["user:create"]
+roles	--RolesAuthorizationFilter类，角色拦截器，验证用户是否拥有该角色。如/user/**=roles[user]
+user	--UserFilter类，用户l拦截器，用户已经身份认证/记住我登录都可。如/**=user
+
+
+
+Shiro相关注解：
+	@RequiresAuthentication	--表示当前Subject已经通过login进行了身份认证，即Subject.isAuthenticated()返回true
+	@RequiresUser	--表示当前Subject已经身份验证或者通过记住我登录的
+	@RequiresGuest	--表示当前Subject没有身份验证或通过记住我登录过，即是游客身份
+	@RequiresRoles(value={"admin", "user"}, logical= Logical.AND)	--表示当前Subject需要角色admin和user
+	@RequiresPermissions (value={"user:a", "user:b"}, logical= Logical.OR)	--表示当前Subject需要权限user:a或user:b
+
+
+
+shiro会话管理：
+	shiro通过org.apache.shiro.session.mgt.eis.SessionDAO对象的getActiveSessions()方法获取到当前所有有效的Session对象。
+	通过这些Session对象，我们可以实现一些比较有趣的功能，如查看当前系统的在线人数、查看这些在线用户的一些基本信息、强制让某个用户下线等。
+	详情：https://mrbird.cc/Spring-Boot-Shiro%20session.html
+
+
+
+Authenticator
+	AuthenticationToken --登录用户
+	AuthenticationInfo --数据库用户
+	CredentialsMatcher --密码匹配器，校验登录用户与数据库用户是否一致，详情参考具体实现类
+
+JWTFilter.executeLogin(request, response) && AuthenticatingFilter.executeLogin(request, response)
+	DelegatingSubject.login(token);
+		DefaultSecurityManager.login(subject, token);
+			AuthenticatingSecurityManager.authenticate(token);
+				AbstractAuthenticator.authenticate(token);
+					ModularRealmAuthenticator.doAuthenticate(token);
+						doSingleRealmAuthentication(realm, token);
+							AuthenticatingRealm.getAuthenticationInfo(token);
+								info = Realm.doGetAuthenticationInfo(token); //通过自定义Realm得到数据库记录
+								assertCredentialsMatch(token, info); //密码匹配
+
+
+
+--JwtFilter描述：
+JWTFilter.executeLogin(request, response) {
+	HttpServletRequest httpServletRequest = (HttpServletRequest) request;
+	String token = httpServletRequest.getHeader(TOKEN); //得到token
+	JwtToken jwtToken = new JwtToken(token);
+	try {
+		getSubject(request, response).login(jwtToken);
+		return true;
+	} catch(Exception e) {
+		log.error(e.getMessage());
+		return false;
+	}
+}
+--AuthenticatingFilter描述：
+AuthenticatingFilter.executeLogin(request, response) {
+	AuthenticationToken token = createToken(request, response);
+	try {
+		Subject subject = getSubject(request, response);
+		subject.login(token);
+		return onLoginSuccess(token, subject, request, response);
+	} catch(AuthenticationException e) {
+		return onLoginFailure(token, e, request, response);
+	}
+}
+
+
+过滤器(filter)描述：
+	--https://www.jianshu.com/p/054c925cd45d
+
+	https://www.jianshu.com/c/baa2a38e40d3  !!!!
