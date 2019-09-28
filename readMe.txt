@@ -16,7 +16,6 @@ springboot-shiro-test3： 测试认证时密码错误次数限制，并使用EhC
 	输入超过3次密码错误回将该账号暂时锁住10分钟（ehcache缓存实现）。
 	测试：http://localhost:8080/login?username=admin&password=admin1
 
-记住我设置(暂无，集群后用处不大，后面的都是json数据交互)
 
 springboot-shiro-test4： 测试授权，并使用aop注解，并使用缓存将授权信息缓存起来
 	实现授权：重写自定义ealm的doGetAuthorizationInfo()方法
@@ -55,12 +54,10 @@ springboot-shiro-test6： 测试整合记住我
 		第一次登录后，关掉浏览器，再次访问该系统主页面("/main")能直接访问到
 
 
-
-
-
-
 https://mrbird.cc/Spring-Boot-Shiro%20session.html
 
+springboot-shiro-test7： 测试整合jwt
+	存在问题：连续拦截两次请求
 
 
 

@@ -18,9 +18,97 @@ authc	--FormAuthenticationFilter类，基于表单拦截器，若没有登录会
 authcBasic	--BasicHttpAuthenticationFilter类，Basic HTTP身份验证拦截器
 logout	--LogoutFilter类，退出拦截器，主要属性：redirectUrl-退出成功后重定向的地址。如/logout=logout
 noSessionCreation	--NoSessionCreationFilter类，不创建会话拦截器。调用subject.getSession(false)没问题，调用subject.getSession(true)抛出异常
-perms	--PermissionsAuthorizationFilter类，权限拦截器，验证用户是否拥有该权限。如/user/form=perms["user:create"]
-roles	--RolesAuthorizationFilter类，角色拦截器，验证用户是否拥有该角色。如/user/**=roles[user]
+
+
 user	--UserFilter类，用户l拦截器，用户已经身份认证/记住我登录都可。如/**=user
+
+过滤器名(分3类)：
+1类(登录相关)：
+	authc 	--FormAuthenticationFilter类，基于表单拦截器。如：“/**=authc”，若没有登录会跳转到登录页。属性：usernameParam-表单提交的用户名参数名；passwordParam-表单提交的密码参数名；rememberMeParam-表单提交的记住我参数名；loginUrl-登录页地址；successUrl-登录成功默认重定向地址；failureKeyAttribute-登录失败后错误信息存储key
+	authcBasic --BasicHttpAuthenticationFilter类，Basic HTTP身份验证拦截器。属性：applicationName-弹出登陆框显示的信息
+	logout --LogoutFilter类，退出拦截器。属性：redirectUrl-退出成功后重定向的地址。如/logout=logout
+	user   --UserFilter类，用户拦截器，用户已经身份认证/记住我登录都可。如/**=user
+	anon	--AnonymousFilter类，匿名拦截器，即不需要登录即可访问。一般用于静态资源过滤。如/static/**=anon
+2类(授权相关)：
+	roles	--RolesAuthorizationFilter类，角色拦截器，验证用户是否拥有该角色。如/user/**=roles[user]
+	perms	--PermissionsAuthorizationFilter类，权限拦截器，验证用户是否拥有该权限。如/user/form=perms["user:create"]
+其它类：
+	noSessionCreation --不创建会话，调用subject.getSession(false)不会有问题，但subject.getSession(true)会抛出DisabledSessionException异常。
+
+
+
+层级关系：
+(I)Filter
+	(C)AbstractFilter
+		(C)NameableFilter
+			(C)OncePerRequestFilter
+				(C)AdviceFilter
+					(C)PathMatchingFilter
+						(C)AccessControlFilter
+				(C)AbstractShiroFilter
+					(C)ShiroFilter
+1.NameableFilter
+	给filter起名字。如FormAuthenticationFilter类的名字为authc
+2.OncePerRequestFilter
+	用于防止多次执行Filter，即一次请求只会走一次过滤器链。另外提供enable属性用于是否启用该拦截器。
+3.ShiroFilter
+	ShiroFilter是整个Shiro的入口点，用于拦截需要安全控制的请求进行处理。
+4.AdviceFilter
+	AdviceFilter提供了AOP风格的支持，类似于SpringMVC的Interceptor
+	存在三个方法：
+		// 类似于AOP中的前置增强；在拦截器链执行之前执行；如果返回true则继续拦截器链；否则中断后续的拦截器链的执行直接返回；进行预处理（如基于表单的身份验证、授权）
+		boolean preHandle(ServletRequest request, ServletResponse response) throws Exception
+		// 类似于AOP中的后置返回增强；在拦截器链执行完成后执行；进行后处理（如记录执行时间之类的）
+		void postHandle(ServletRequest request, ServletResponse response) throws Exception
+		// 类似于AOP中的后置最终增强；即不管有没有异常都会执行；可以进行清理资源（如接触Subject与线程的绑定之类的）
+		void afterCompletion(ServletRequest request, ServletResponse response, Exception exception) throws Exception
+5.PathMatchingFilter
+	PathMatchingFilter提供基于Ant风格的请求路径匹配功能。如“role[admin,user]”自动根据“,”分割解析到一个路径参数配置并绑定到相应路径
+	存在两个方法：
+		// true-匹配。该方法用于path与请求路径进行匹配的方法
+		boolean pathsMatch(String path, ServletRequest request)
+		// 在preHandle中，当pathsMatch匹配一个路径后，会调用opPreHandler方法并将路径绑定参数配置传给mappedValue，然后可以在这个方法中进行一些验证（如角色授权），如果验证失败可以返回false中断流程；默认返回true；也就是说子类可以只实现onPreHandle即可，无须实现preHandle。如果没有path与请求路径匹配，默认是通过的（即preHandle返回true）
+		boolean onPreHandle(ServletRequest request, ServletResponse response, Object mappedValue) throws Exception
+6.AccessControlFilter
+	AccessControlFilter提供了访问控制的基础功能；比如是否允许访问/当访问拒绝时如何处理等。
+	存在三个方法：
+		// 表示是否允许访问；mappedValue就是[urls]配置中拦截器参数部分，如果允许访问返回true，否则false
+		abstract boolean isAccessAllowed(ServletRequest request, ServletResponse response, Object mappedValue) throws Exception
+		// 表示当访问拒绝时是否已经处理了；如果返回true表示需要继续处理；如果返回false表示该拦截器实例已经处理了，将直接返回即可
+		protected abstract boolean onAccessDenied(ServletRequest request, ServletResponse response) throws Exception;
+		
+		// onPreHandle会自动调用这两个方法决定是否继续处理
+		public boolean onPreHandle(ServletRequest request, ServletResponse response, Object mappedValue) throws Exception {
+			return isAccessAllowed(request, response, mappedValue) || onAccessDenied(request, response, mappedValue);
+		}
+	另外一些属性和方法：
+		void setLoginUrl(String loginUrl) //身份验证时使用，默认/login.jsp
+		String getLoginUrl()
+		Subject getSubject(ServletRequest request, ServletResponse response) //获取Subject实例
+		boolean isLoginRequest(ServletRequest request, ServletResponse response)//当前请求是否是登录请求
+		void saveRequestAndRedirectToLogin(ServletRequest request, ServletResponse response) throws IOException //将当前请求保存起来并重定向到登录页面
+		void saveRequest(ServletRequest request) //将请求保存起来，如登录成功后再重定向回该请求
+		void redirectToLogin(ServletRequest request, ServletResponse response) //重定向到登录页面
+
+
+过滤器链：
+	shiro对Servlet容器的FilterChain进行了代理，即ShiroFilter在继续Servlet容器的Filter链执行之前，通过ProxiedFilterChain对Servlet容器的FilterChain进行了代理。即先走Shiro自己的Filter体系，然后才会委托给Servlet容器的FilterChain进行Servlet容器级别的Filter链执行。
+	Shiro的ProxiedFilterChain执行流程：1、先执行Shiro自己的Filter链 2、再执行Servlet容器的Filter链
+	ProxiedFilterChain是通过FilterChainResolver根据配置文件中[urls]部分是否与请求的URL是否匹配解析得到的。得到一个代理chain详情参考FilterChainResolver类的getChain(request, response, originalChain)方法，originalChain表示原始chain。
+	PathMatchingFilterChainResolver类提供了FilterChainResolver实现，其根据[urls]中配置的url模式（默认Ant风格）=拦截器链和请求的url是否匹配来解析得到配置的拦截器链的。
+	而PathMatchingFilterChainResolver内部通过FilterChainManager维护着拦截器链，比如DefaultFilterChainManager实现维护着url模式与拦截器链的关系。因此我们可以通过FilterChainManager进行动态动态增加url模式与拦截器链的关系。
+	DefaultFilterChainManager会默认添加org.apache.shiro.web.filter.mgt.DefaultFilter中声明的拦截器。如anon(AnonymousFilter.class),authc(FormAuthenticationFilter.class)
+	详情： https://m.2cto.com/kf/201610/552718.html?tdsourcetag=s_pcqq_aiomsg	--看不懂拦截器链部分！！！
+
+	扩展OncePerRequestFilter：提供doFilterInternal()方法
+	扩展AdviceFilter：提供preHandle、postHandle、afterCompletion这三个方法
+	扩展PathMatchingFilter：提供onPreHandle方法，并继承AdviceFilter类，重写preHandle方法用于添加url过滤。
+	扩展AccessControlFilter：提供isAccessAllowed、onAccessDenied两个方法，并继承PathMatchingFilter类，重写onPreHandle方法用于执行上面两个方法。
+
+
+
+
+
 
 
 
@@ -45,6 +133,7 @@ Authenticator
 	AuthenticationInfo --数据库用户
 	CredentialsMatcher --密码匹配器，校验登录用户与数据库用户是否一致，详情参考具体实现类
 
+--附：executeLogin()方法在Filter中调用，要了解各种Filter的用途
 JWTFilter.executeLogin(request, response) && AuthenticatingFilter.executeLogin(request, response)
 	DelegatingSubject.login(token);
 		DefaultSecurityManager.login(subject, token);
@@ -88,3 +177,48 @@ AuthenticatingFilter.executeLogin(request, response) {
 	--https://www.jianshu.com/p/054c925cd45d
 
 	https://www.jianshu.com/c/baa2a38e40d3  !!!!
+
+
+	https://www.jianshu.com/p/3c51832f1051
+具体过滤器：
+	FormAuthenticationFilter
+		4个属性：username、password、rememberMe、shiroLoginFailure
+		setLoginUrl(loginUrl) {...}
+		onAccessDenied(request, response) {
+			isLoginRequest(request, response)
+			isLoginSubmission(request, response)
+			return executeLogin(request, response);
+
+			saveRequestAndRedirectToLogin(request, response);
+			return false;
+		}
+		isLoginSubmission(request, response);
+		createToken(request, reponse) {
+			return createToken(username, password, request, response); //AuthenticatingFilter方法
+		}
+		onLoginSuccess(token, subject, request, response) {...}
+		onLoginFailure(token, e, request, response) {...}
+
+
+	BasicHttpAuthenticationFilter
+		isAccessAllowed(request, response, mappedValue) {
+
+		}
+		onAccessDenied
+
+	AuthenticatingFilter
+		executeLogin(request, response) {
+			AuthenticationToken token = createToken(request, response);
+
+			Subject subject = getSubject(request, response);
+			subject.login(token);
+			return onLoginSuccess(token, subject, request, response);
+			return onLoginFailure(token, e, request, response);
+		}
+		createToken(request, response);
+		createToken(username, password, request, response);
+		createToken(username, password, rememberMe, host) {
+			return new UsernamePasswordToken(username, password, rememberMe, host);
+		}
+		onLoginSuccess
+		onLoginFailure
