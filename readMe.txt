@@ -57,7 +57,6 @@ springboot-shiro-test6： 测试整合记住我
 https://mrbird.cc/Spring-Boot-Shiro%20session.html
 
 springboot-shiro-test7： 测试整合jwt
-	存在问题：连续拦截两次请求
 
 
 

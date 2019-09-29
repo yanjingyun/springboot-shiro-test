@@ -31,10 +31,6 @@ public class JWTFilter extends BasicHttpAuthenticationFilter {
 			if (pathMatcher.match(u, httpServletRequest.getRequestURI()))
 				return true;
 		}
-
-		if (isLoginAttempt(request, response)) {
-			return executeLogin(request, response);
-		}
 		return false;
 	}
 
