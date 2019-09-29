@@ -3,9 +3,6 @@ package com.yjy.demo.domain;
 import java.io.Serializable;
 import java.util.Set;
 
-/**
- * @author MrBird
- */
 public class User implements Serializable {
     private static final long serialVersionUID = -2731598327208972274L;
 
@@ -14,7 +11,6 @@ public class User implements Serializable {
     private String password;
 
     private Set<String> role;
-
     private Set<String> permission;
 
     public User(String username, String password, Set<String> role, Set<String> permission) {

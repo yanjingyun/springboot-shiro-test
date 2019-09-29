@@ -32,9 +32,6 @@ public class UserService {
 
 	/**
 	 * 获取用户
-	 * 
-	 * @param username 用户名
-	 * @return 用户
 	 */
 	public User getUser(String username) {
 		List<User> users = users();

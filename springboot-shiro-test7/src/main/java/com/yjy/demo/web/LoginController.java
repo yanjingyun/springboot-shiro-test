@@ -14,9 +14,6 @@ import com.yjy.core.utils.MD5Util;
 import com.yjy.demo.domain.User;
 import com.yjy.demo.service.UserService;
 
-/**
- * @author MrBird
- */
 @RestController
 public class LoginController {
 
