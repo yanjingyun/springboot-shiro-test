@@ -1,4 +1,231 @@
 
+主要知识点：(需要掌握!!!)
+	1、认证、授权、realm
+	2、配置类 shiroFilter securityManager realm
+	3、shiro过滤器（在shiroFilter中配置）
+		内置过滤器，如anon、logout、user、authc等
+		自定义过滤器，如shiroOrFilter
+	4、会话管理器 SessionManager SessionDao	redis实现session共享
+	5、缓存管理，用于缓存角色和权限数据，redis实现 还可以做一个本地二级缓存，将redis数据存入本地变量中，这样就不用每次都读取redis数据
+	6、记住我rememberMe cookieRememberManager类
+
+
+shiro六大体系结构：
+	Authentication		--认证，用户登录
+	Authorization		--授权，用户具有哪些权限
+	Cryptography		--安全数据加密
+	SessionManagement	--会话管理
+	Web Integration		--web系统集成
+	Interations			--集成其它应用，spring、缓存等
+
+shiro的三个核心类：
+1.Subject	--用户主体
+	通过SecurityUtils.getSubject()获取。
+	主要方法：登录login、注销logout、是否认证isAuthenticated、拥有某角色hasRole、某权限isPermitted。
+	如：
+		Subject subject = SecurityUtils.getSubject();
+		subject.login();
+
+2.SecurityManager --核心类，安全管理器。
+	注入Realm、缓存管理器CacheManager（可在realm注入）、会话管理器SessionManager、记住我RememberMeManager
+
+3.Realm --shiro连接数据库的桥梁。
+	用于认证和授权
+	注入加密类HashedCredentialsMatcher、缓存管理器CacheManager
+
+
+
+表单过滤器(FormAuthenticationFilter)
+
+
+权限注解：
+	--开启springAOP注解：配置DefaultAdvisorAutoProxyCreator和AuthorizationAttributeSourceAdvisor两个bean即可
+	@RequiresAuthentication	--表示当前Subject已经通过login进行身份验证，即Subject.isAuthenticated()返回true
+	@RequiresUser			--表示当权Subject已经身份验证或通过记住我登录
+	@RequiresGuest	--表示当前Subject没有身份验证或通过记住我登录过，即是游客身份
+	@RequiresRoles("role1")	--表示需要role1角色
+	@RequiresRoles(value = {"role1", "role2"}, logical = Logical.OR)	--表示需要role1或role2角色
+	@RequiresPermissions("/permission1")	--表示需要permission1权限
+	@RequiresPermissions(value = {"permission1", "permission2"}, logical = Logical.OR)	--表示需要permission1或permission2权限
+
+
+统一异常处理：
+	针对普通请求和ajax异步请求的异常进行处理
+
+
+1.认证、授权、realm
+Shiro认证流程：
+	创建SecurityManager -> 将SecurityManager注入SecurityUtils中 -> 创建主体Subject -> 主体提交认证请求 -> SecurityManager认证 -> Authentication认证 -> Realm验证	
+Shiro授权流程：
+	创建SecurityManager -> 将SecurityManager注入SecurityUtils中 -> 创建主体Subject -> 主体授权 -> SecurityManager授权 -> Authorizer授权 -> Realm获取角色权限数据
+
+简单认证和授权测试：
+-1）导入jar包
+	<dependency>
+		<groupId>org.apache.shiro</groupId>
+		<artifactId>shiro-core</artifactId>
+		<version>1.4.0</version>
+	</dependency>
+	<dependency>
+		<groupId>junit</groupId>
+		<artifactId>junit</artifactId>
+		<version>RELEASE</version>
+	</dependency>
+-2）测试
+public class SimpleRealmTest {
+	
+	SimpleAccountRealm simpleAccountRealm = new SimpleAccountRealm();
+	
+	@Before
+    public void addUser() { //模拟数据
+        simpleAccountRealm.addAccount("admin", "123456", "admin", "user");
+    }
+	
+	@Test
+	public void test1() {
+		// 1.创建SecurityManager
+		DefaultSecurityManager defaultSecurityManager = new DefaultSecurityManager();
+		defaultSecurityManager.setRealm(simpleAccountRealm);
+		
+		// 2.主体提交认证请求
+		SecurityUtils.setSecurityManager(defaultSecurityManager);
+		Subject subject = SecurityUtils.getSubject();
+		
+		UsernamePasswordToken token = new UsernamePasswordToken("admin", "123456");
+		subject.login(token);
+		
+		System.out.println("是否登录:" + subject.isAuthenticated());
+		
+		subject.checkRole("admin"); //有admin角色
+		subject.checkRoles("admin", "user"); //同时有admin和user角色
+		
+		subject.logout(); //登出
+		System.out.println("是否登录:" + subject.isAuthenticated());
+	}
+}
+
+
+加密(HashedCredentialsMatcher)
+	流程：创建HashedCredentialsMatcher对象，并设置散列算法和计算次数 -> 将HashedCredentialsMatcher对象设置到我们的Realm中
+测试：
+	@Before
+	public void addUser() {
+		// System.out.println(new Md5Hash("admin", "admin", 1023).toString()); //加密(密码，盐值，循环次数)
+		
+		simpleAccountRealm.addAccount("admin", "e10adc3949ba59abbe56e057f20f883e", "admin", "user");
+
+		// 创建HashedCredentialsMatcher并设置到realm中
+		HashedCredentialsMatcher matcher = new HashedCredentialsMatcher();
+		matcher.setHashAlgorithmName("md5");
+		matcher.setHashIterations(1);
+		simpleAccountRealm.setCredentialsMatcher(matcher);
+	}
+
+
+2.Realm
+	有SimpleAccountRealm、IniRealm、JdbcRealm和自定义Realm等。
+
+自定义Realm（重要）！！！
+	--继承AuthorizingRealm，重写认证(doGetAuthenticationInfo)和授权(doGetAuthorizationInfo)方法。
+测试：
+-1）创建实体
+public class User {
+	private String username;
+	private String password;
+	...
+}
+
+-2）创建自定义Realm
+public class UserRealm extends AuthorizingRealm {
+	
+	// 模拟数据库或缓存的数据
+	Map<String, User> userMap = new HashMap<String, User>(16);
+	Set<String> roleSet = new HashSet<>();
+	Set<String> permissionSet = new HashSet<>();
+	{
+		userMap.put("admin", new User("admin", new Md5Hash("123456", "admin").toString())); 
+		roleSet.add("admin"); roleSet.add("user");
+		permissionSet.add("user:select"); permissionSet.add("user:update");
+	}
+
+	/**
+	 * 授权
+	 */
+	@Override
+	protected AuthorizationInfo doGetAuthorizationInfo(PrincipalCollection principals) {
+		SimpleAuthorizationInfo simpleAuthorizationInfo = new SimpleAuthorizationInfo();
+		
+		// 模拟数据：从数据库或者缓存中，通过username获取角色及权限数据
+//		String username = (String) principals.getPrimaryPrincipal();
+//		Set<Role> roleSet = findRolesByUsername(username);
+		simpleAuthorizationInfo.setRoles(roleSet);
+		simpleAuthorizationInfo.setStringPermissions(permissionSet);
+		
+		return simpleAuthorizationInfo;
+	}
+
+	/**
+	 * 认证
+	 */
+	@Override
+	protected AuthenticationInfo doGetAuthenticationInfo(AuthenticationToken token) throws AuthenticationException {
+		// 1.从主体传过来的认证信息（用户名、凭证/密码）
+		String username = (String) token.getPrincipal();
+		
+		// 2.模拟数据：通过username获取User记录，仅需要password和salt
+		User user = userMap.get(username);
+		
+		SimpleAuthenticationInfo simpleAuthenticationInfo = new SimpleAuthenticationInfo(username, user.getPassword(), getName());
+		simpleAuthenticationInfo.setCredentialsSalt(ByteSource.Util.bytes(username));
+		return simpleAuthenticationInfo;
+	}
+}
+-3）测试
+public class UserRealmTest {
+
+	@Test
+	public void testUserRealm() {
+		// 1.创建Realm对象
+		UserRealm userRealm = new UserRealm();
+
+		// 1.1 创建HashedCredentialsMatcher
+		HashedCredentialsMatcher matcher = new HashedCredentialsMatcher();
+		matcher.setHashAlgorithmName("md5");
+		matcher.setHashIterations(1);
+		userRealm.setCredentialsMatcher(matcher);
+
+		// 2.创建SecurityManager，将Realm对象注入
+		DefaultSecurityManager defaultSecurityManager = new DefaultSecurityManager();
+		defaultSecurityManager.setRealm(userRealm);
+
+		// 3.主体提交认证请求
+		SecurityUtils.setSecurityManager(defaultSecurityManager);
+		Subject subject = SecurityUtils.getSubject();
+		UsernamePasswordToken token = new UsernamePasswordToken("admin", "123456");
+		subject.login(token);
+
+		System.out.println("是否登录:" + subject.isAuthenticated());
+
+		// 4.检查用户角色、权限
+		subject.checkRoles("admin"); // 授权
+		subject.checkPermission("user:select");
+
+		subject.logout();
+		System.out.println("是否登录:" + subject.isAuthenticated());
+	}
+}
+
+
+设置缓存(CacheManager)
+	--用于Realm的doGetAuthorizationInfo()方法中，将角色和权限数据缓存起来。不然每次使用shiro:hasRole、shiro:hasPermission等标签，都会调用一次doGetAuthorizationInfo（）方法
+	流程：创建Cache的bean对象 -> 将该对象set到realm或securityManager中
+
+
+记住我(RememberMe)
+	通过login()认证登录的，即authentication==true，其访问权限最高，能访问所有页面；登录时勾选了“记住我”，rememberMe==true，则可以访问所有user控制的页面，但不能访问authc控制的页面。
+	流程：创建记住我管理器(CookieRememberMeManager)的bean对象 -> 将该对象set到realm或securityManager中
+
+
 静态文件匿名访问：
 	filterChainDefinitionMap.put("/assets/**", "anon"); //静态资源
 	如：
@@ -7,36 +234,22 @@
 		浏览器能直接访问则说明配置有效：http://localhost:8080/assets/js/jquery.min.js
 
 
-filterChain基于短路机制，即最先匹配原则。
-	如/user/**=anon
-	/user/aa=authc 永远不会执行
-
-
-过滤器：
-anon	--AnonymousFilter类，匿名拦截器，即不需要登录即可访问。一般用于静态资源过滤。如/static/**=anon
-authc	--FormAuthenticationFilter类，基于表单拦截器，若没有登录会跳到相应的登陆页面。如/**=authc
-authcBasic	--BasicHttpAuthenticationFilter类，Basic HTTP身份验证拦截器
-logout	--LogoutFilter类，退出拦截器，主要属性：redirectUrl-退出成功后重定向的地址。如/logout=logout
-noSessionCreation	--NoSessionCreationFilter类，不创建会话拦截器。调用subject.getSession(false)没问题，调用subject.getSession(true)抛出异常
-
-
-user	--UserFilter类，用户l拦截器，用户已经身份认证/记住我登录都可。如/**=user
-
-过滤器名(分3类)：
-1类(登录相关)：
-	authc 	--FormAuthenticationFilter类，基于表单拦截器。如：“/**=authc”，若没有登录会跳转到登录页。属性：usernameParam-表单提交的用户名参数名；passwordParam-表单提交的密码参数名；rememberMeParam-表单提交的记住我参数名；loginUrl-登录页地址；successUrl-登录成功默认重定向地址；failureKeyAttribute-登录失败后错误信息存储key
+*************************************************************************************
+过滤器(filter):
+规则：
+	filterChain基于短路机制，即最先匹配原则。如设置/user/**=anon，则/user/aa=authc永远不会执行
+分3类：
+	--1类(登录相关)
+	authc 	--FormAuthenticationFilter类，基于表单拦截器。会判断用户是否已登录(isAuthenticated()==true)，是则放行，否则跳转到登录页面。如：“/**=authc”，若没有登录会跳转到登录页。属性：usernameParam-表单提交的用户名参数名；passwordParam-表单提交的密码参数名；rememberMeParam-表单提交的记住我参数名；loginUrl-登录页地址；successUrl-登录成功默认重定向地址；failureKeyAttribute-登录失败后错误信息存储key
 	authcBasic --BasicHttpAuthenticationFilter类，Basic HTTP身份验证拦截器。属性：applicationName-弹出登陆框显示的信息
 	logout --LogoutFilter类，退出拦截器。属性：redirectUrl-退出成功后重定向的地址。如/logout=logout
-	user   --UserFilter类，用户拦截器，用户已经身份认证/记住我登录都可。如/**=user
+	user   --UserFilter类，用户拦截器，用户已经身份认证(subject.isRemembered()==true)/记住我(subject.isAuthenticated()==true)登录都可。如/**=user
 	anon	--AnonymousFilter类，匿名拦截器，即不需要登录即可访问。一般用于静态资源过滤。如/static/**=anon
-2类(授权相关)：
+	--2类(授权相关)
 	roles	--RolesAuthorizationFilter类，角色拦截器，验证用户是否拥有该角色。如/user/**=roles[user]
 	perms	--PermissionsAuthorizationFilter类，权限拦截器，验证用户是否拥有该权限。如/user/form=perms["user:create"]
-其它类：
+	--其它类
 	noSessionCreation --不创建会话，调用subject.getSession(false)不会有问题，但subject.getSession(true)会抛出DisabledSessionException异常。
-
-
-
 层级关系：
 (I)Filter
 	(C)AbstractFilter
@@ -105,26 +318,22 @@ user	--UserFilter类，用户l拦截器，用户已经身份认证/记住我登�
 	扩展PathMatchingFilter：提供onPreHandle方法，并继承AdviceFilter类，重写preHandle方法用于添加url过滤。
 	扩展AccessControlFilter：提供isAccessAllowed、onAccessDenied两个方法，并继承PathMatchingFilter类，重写onPreHandle方法用于执行上面两个方法。
 
+因此一般过滤器设置如下：
+	Map<String, String> filterChainDefinitionMap = new LinkedHashMap<String, String>();
+	filterChainDefinitionMap.put("/assets/**", "anon"); //静态资源文件css、img、js
+	filterChainDefinitionMap.put("/login", "anon");
+	filterChainDefinitionMap.put("/logout", "logout");
+	filterChainDefinitionMap.put("/**", "user"); //user表示authentication=true || rememberMe=true 均可访问
+	filterChainDefinitionMap.put("/pay/**", "authc"); //支付页面需要已登录
 
 
 
-
-
-
-
-Shiro相关注解：
-	@RequiresAuthentication	--表示当前Subject已经通过login进行了身份认证，即Subject.isAuthenticated()返回true
-	@RequiresUser	--表示当前Subject已经身份验证或者通过记住我登录的
-	@RequiresGuest	--表示当前Subject没有身份验证或通过记住我登录过，即是游客身份
-	@RequiresRoles(value={"admin", "user"}, logical= Logical.AND)	--表示当前Subject需要角色admin和user
-	@RequiresPermissions (value={"user:a", "user:b"}, logical= Logical.OR)	--表示当前Subject需要权限user:a或user:b
-
-
-
+*************************************************************************************
 shiro会话管理：
 	shiro通过org.apache.shiro.session.mgt.eis.SessionDAO对象的getActiveSessions()方法获取到当前所有有效的Session对象。
 	通过这些Session对象，我们可以实现一些比较有趣的功能，如查看当前系统的在线人数、查看这些在线用户的一些基本信息、强制让某个用户下线等。
 	详情：https://mrbird.cc/Spring-Boot-Shiro%20session.html
+
 
 
 
@@ -147,78 +356,15 @@ JWTFilter.executeLogin(request, response) && AuthenticatingFilter.executeLogin(r
 
 
 
---JwtFilter描述：
-JWTFilter.executeLogin(request, response) {
-	HttpServletRequest httpServletRequest = (HttpServletRequest) request;
-	String token = httpServletRequest.getHeader(TOKEN); //得到token
-	JwtToken jwtToken = new JwtToken(token);
-	try {
-		getSubject(request, response).login(jwtToken);
-		return true;
-	} catch(Exception e) {
-		log.error(e.getMessage());
-		return false;
-	}
-}
---AuthenticatingFilter描述：
-AuthenticatingFilter.executeLogin(request, response) {
-	AuthenticationToken token = createToken(request, response);
-	try {
-		Subject subject = getSubject(request, response);
-		subject.login(token);
-		return onLoginSuccess(token, subject, request, response);
-	} catch(AuthenticationException e) {
-		return onLoginFailure(token, e, request, response);
-	}
-}
 
 
-过滤器(filter)描述：
-	--https://www.jianshu.com/p/054c925cd45d
-
-	https://www.jianshu.com/c/baa2a38e40d3  !!!!
 
 
-	https://www.jianshu.com/p/3c51832f1051
-具体过滤器：
-	FormAuthenticationFilter
-		4个属性：username、password、rememberMe、shiroLoginFailure
-		setLoginUrl(loginUrl) {...}
-		onAccessDenied(request, response) {
-			isLoginRequest(request, response)
-			isLoginSubmission(request, response)
-			return executeLogin(request, response);
-
-			saveRequestAndRedirectToLogin(request, response);
-			return false;
-		}
-		isLoginSubmission(request, response);
-		createToken(request, reponse) {
-			return createToken(username, password, request, response); //AuthenticatingFilter方法
-		}
-		onLoginSuccess(token, subject, request, response) {...}
-		onLoginFailure(token, e, request, response) {...}
 
 
-	BasicHttpAuthenticationFilter
-		isAccessAllowed(request, response, mappedValue) {
 
-		}
-		onAccessDenied
 
-	AuthenticatingFilter
-		executeLogin(request, response) {
-			AuthenticationToken token = createToken(request, response);
 
-			Subject subject = getSubject(request, response);
-			subject.login(token);
-			return onLoginSuccess(token, subject, request, response);
-			return onLoginFailure(token, e, request, response);
-		}
-		createToken(request, response);
-		createToken(username, password, request, response);
-		createToken(username, password, rememberMe, host) {
-			return new UsernamePasswordToken(username, password, rememberMe, host);
-		}
-		onLoginSuccess
-		onLoginFailure
+
+
+

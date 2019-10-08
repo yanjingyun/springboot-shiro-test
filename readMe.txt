@@ -59,10 +59,7 @@ https://mrbird.cc/Spring-Boot-Shiro%20session.html
 springboot-shiro-test7： 测试整合jwt
 
 
-
-
-
-
+shiro集成jwt：测试token超时刷新(未开发)：	
 
 
 

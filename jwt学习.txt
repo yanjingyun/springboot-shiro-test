@@ -1,0 +1,58 @@
+jwt介绍：
+	实现前后端分离，则不能使用cookie、session方式鉴权，所以使用jwt，完全实现无状态鉴权。
+组成：
+	jwt由三部分组成：头(header).有效负荷(playload).签名(signature)
+	-1）头(header)
+		是一个json对象。属性有“令牌类型，如JWT、哈希算法，如sha256”两个。将该json通过base64加密得到JWT的header。
+		例：{'alg': 'SHA256', 'typ': 'JWT'}
+	-2）有效负荷(playload)
+		是一个json对象。其中包含了声明(Claim)，声明可以存放实体（通常是用户）和其它数据的声明。将该json通过base64加密得到JWT的playload
+		声明包括3种类型：已注册声明、公开声明、私有声明。
+		例：{'iss': 'user1', 'iat': 1542337107, 'exp': 1542340707, userId: 'xxx'}
+	-3）签名(signature)
+		将header和playload组合成新的字符串(header.playload)，对新形成的字符串使用标头当中指定的算法进行加密后得到signature。
+		String signature = HMACSHA256(base64UrlEncode(header) + "." + base64UrlEncode(payload), secret);
+	--最后将字符串组成header.playload.signature就是生成的token。
+
+
+
+示意图：？？？？？？？？？？？
+	JWT生成图：https://img-blog.csdnimg.cn/20181116124133896.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L0RoX0NoYW8=,size_16,color_FFFFFF,t_70
+	
+	初次登录生成JWT流程图： https://img-blog.csdnimg.cn/20181116124057185.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L0RoX0NoYW8=,size_16,color_FFFFFF,t_70
+	
+	用户访问资源流程图： https://img-blog.csdnimg.cn/20181116125441187.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L0RoX0NoYW8=,size_16,color_FFFFFF,t_70
+
+
+Shiro + JWT + Spring Boot Restful 简易教程：
+	详情：
+		https://www.inlighting.org/archives/spring-boot-shiro-jwt.html
+		https://github.com/Smith-Cruise/Spring-Boot-Shiro
+背景：
+	实现前后端分离，则不能使用cookie、session方式鉴权，所以使用jwt，可以通过一个加密密钥来进行前后端的鉴权。
+特性：
+	完全使用shiro注解，保持高度的灵活性
+	放弃cookie、session，使用JWT进行鉴权，完全实现无状态鉴权
+	JWT密钥支持过期时间
+	对跨域提供支持
+程序逻辑：
+	-1）发送post请求到/login进行登录，若成功则返回一个加密token，失败则返回401错误；
+	-2）之后用户每次访问地址的header中添加Authorization字段，如Authorization:token，token为密钥；
+	-3）后台进行token校验，若有误则返回401错误。
+token加密说明：
+	携带了username信息在token中
+	设定过期时间
+	使用用户登入密码对token进行加密
+token校验流程：
+	-1）获得token中携带的username信息
+	-2）进入数据库搜索该用户，得到他的密码
+	-3）使用用户密码来校验token是否正确
+
+
+jwt超时刷新：
+	前言：长时间操作系统时，会jwt可能已超时，为了避免用户重新登录，我们需要将jwt保存在redis缓存，并设置过期时间。当校验jwt时得出该jwt已超时，但redis缓存中还存在该jwt，则重新生成jwt返回给前端。
+	流程：
+		用户第一次登录，生成token，并使用withExpiresAt()方法设置过期时间。将token存入redis缓存(k、v一样)，并设置过期时间(30分钟)。注意redis的过期时间与生成token的过期时间不一样。
+		用户每次请求时校验token是否过期：
+			1、若未过期则更新redis缓存中该token的过期时间。
+			2、若已过期则判断redis缓存中是否存在该token。若存在，则表示该用户一直在操作只是token失效了，系统应该重新生成token返回给用户；若不存在则表示该用户账户空闲超时，返回用户信息已失效，请重新登录。
