@@ -1,0 +1,72 @@
+
+
+Base64编码/解码：
+	用于网络传输的数据进行编码。
+	--例如：
+	String str = "hello world你好呀啊啊啊";
+	// 编码
+	Encoder encoder = Base64.getEncoder();
+	String encodeText = encoder.encodeToString(str.getBytes());
+	System.out.println(encodeText);
+	// 解码
+	Decoder decoder = Base64.getDecoder();
+	String decodeText = new String(decoder.decode(encodeText));
+	System.out.println(decodeText);
+
+
+摘要算法(哈希算法/散列算法)：
+	概念：把任意长度的输入，通过散列算法，变换成固定长度的输出，该输出就是散列值。
+	用途：不可逆，一般用于生成数据的摘要信息。如密码加密、数字签名、信息完整性校验等。
+	不可逆：哈希算法是一个不可逆的单向函数,它可以将任何大小的数据生成一段定长的唯一hash值，并且无法被反向计算得到目标信息。
+	分类(主要分为MD、SHA和Hmac算法)：
+		MD：安全散列算法，固定长度摘要信息。常见MD2、MD4和MD5
+		SHA：常见SHA-1、SHA2（SHA-224、SHA256、SHA-384、SHA-512）
+		Hmac：含有密钥的摘要算法，通过密钥和消息生成一个摘要信息。常见HmacMD2、HmacMD4、HmacMD5、HmacSHA1、HmacSHA224、HmacSHA256、HmacSHA384、HmacSHA512
+		附：sha1比md5更安全，sha1基于md5，而md5基于md4。
+
+对称加密算法：
+	对称加密采用了对称密码编码技术，它的特点是加密和解密使用相同的密钥。
+	常见：数据加密标准(DES)、国际数据加密算法(IDEA)、3DES(三重DES)、RC4、RC5、RC6和AES(想要替代DES)
+	缺点：使用同一份密钥，无法验证发送者和接收者的身份。
+
+非对称算法：
+	非对称加密算法有两个密钥：公开密钥(publicKey)和私有密钥(privateKey)。
+	公开密钥与私有密钥是一对，如果公开密钥对数据加密，只有用对应私有密钥才能解密；如果用私有密钥对数据进行加密，只有对应公开密钥才能解密。
+	常见：RSA、ECC(移动设备用)、DSA(数字签字用)
+	使用过程：
+		-1）甲方生成一对密钥并将其中的一把公开密钥向其公开；
+		-2）得到该公开密钥的乙方使用该密钥对机密信息进行加密后再发送给甲方；
+		-3）甲方再用自己保存的另一把私有密钥对加密后的信息进行解密，得到原来的机密信息。
+
+
+密码加密过程：将password转byte数组后，通过sha1算法（sha1比md5更安全）不断循环次数得到的byte数组，最后使用Hex解码得到加密后的passsword。
+
+shiro中加密逻辑：
+	/* bytes-需要加密的字符串 salt-盐值 hashIterations-循环加密次数 */
+	protected byte[] hash(byte[] bytes, byte[] salt, int hashIterations) throws UnknownAlgorithmException {
+        MessageDigest digest = getDigest(getAlgorithmName()); //常用算法MD2、MD5、SHA-1、SHA-256、SHA-384、SHA-512
+        if (salt != null) {
+            digest.reset();
+            digest.update(salt);
+        }
+        byte[] hashed = digest.digest(bytes);
+        for (int i = 0; i < hashIterations; i++) { //循环次数
+            digest.reset();
+            hashed = digest.digest(hashed);
+        }
+        return hashed;
+    }
+
+
+公司新增账号时的密码加密：
+	byte[] bytes = new byte[8]; //随机生成8位盐值
+	random.nextBytes(bytes);
+
+
+http协议，前端登录时密码加密：
+	1、每次打开登录页面时，系统产生“非对称加密的公钥和私钥”，session保存私钥及（设置过期时间、或生成时间戳），将公钥传给登录页；
+		session.setMaxInactiveInterval(30*60); //session中设置过期时间，不知道对后面的用户信息存入session有没有影响。
+		用时间戳来判断是否已过期
+	2、登录页进行登录时使用公钥将密码加密，再传输给后台；
+	3、后台通过session取出时间戳及私钥，判断是否过期、使用私钥对密码解密。
+

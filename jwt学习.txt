@@ -1,3 +1,6 @@
+相关教程：
+	https://blog.csdn.net/ljk126wy/article/details/82751787	 //玩转 SpringBoot 2 之整合 JWT 上篇
+
 jwt介绍：
 	实现前后端分离，则不能使用cookie、session方式鉴权，所以使用jwt，完全实现无状态鉴权。
 组成：
@@ -52,7 +55,7 @@ token校验流程：
 jwt超时刷新：
 	前言：长时间操作系统时，会jwt可能已超时，为了避免用户重新登录，我们需要将jwt保存在redis缓存，并设置过期时间。当校验jwt时得出该jwt已超时，但redis缓存中还存在该jwt，则重新生成jwt返回给前端。
 	流程：
-		用户第一次登录，生成token，并使用withExpiresAt()方法设置过期时间。将token存入redis缓存(k、v一样)，并设置过期时间(30分钟)。注意redis的过期时间与生成token的过期时间不一样。
+		用户第一次登录，生成token，并使用withExpiresAt()方法设置过期时间。将token存入redis缓存(k、v一样)，并设置过期时间。注意redis的过期时间与生成token的过期时间一样，30分钟。
 		用户每次请求时校验token是否过期：
 			1、若未过期则更新redis缓存中该token的过期时间。
 			2、若已过期则判断redis缓存中是否存在该token。若存在，则表示该用户一直在操作只是token失效了，系统应该重新生成token返回给用户；若不存在则表示该用户账户空闲超时，返回用户信息已失效，请重新登录。
