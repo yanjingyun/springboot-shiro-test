@@ -63,10 +63,34 @@ shiro中加密逻辑：
 	random.nextBytes(bytes);
 
 
-http协议，前端登录时密码加密：
-	1、每次打开登录页面时，系统产生“非对称加密的公钥和私钥”，session保存私钥及（设置过期时间、或生成时间戳），将公钥传给登录页；
-		session.setMaxInactiveInterval(30*60); //session中设置过期时间，不知道对后面的用户信息存入session有没有影响。
-		用时间戳来判断是否已过期
-	2、登录页进行登录时使用公钥将密码加密，再传输给后台；
-	3、后台通过session取出时间戳及私钥，判断是否过期、使用私钥对密码解密。
+前端参数加密传输：
+	描述：http协议的参数（如密码等敏感字段）传输并不安全，需要加密后再传给后端。
+	1、前端点击提交时，先请求后端拿到公钥。
+	2、后端生成一对公钥和私钥，将其存入redis（key=公钥，value=私钥），并将公钥传回前端
+	3、前端通过公钥对敏感字段进行加密，并将加密字段和公钥一起传给后端
+	4、后端通过公钥拿到对应私钥，并使用私钥对加密字段进行解密。
+后端相关代码：
+	--1、Controller层
+	@RequestMapping("/get-public-key")
+	public ApiObjectResponse getPublicKey(@RequestBody ApiMapRequest request) {
+		return myService.getPublicKey(request);
+	}
+	--2、Service层
+	public ApiObjectResponse getPublicKey(ApiMapRequest request) {
+		Map<String, String> data = Maps.newHashMap();
+		data.put("publicKey", generatePublicKey());
+		return new ApiObjectResponse().setResult(data);
+	}
 
+	private String generatePublicKey() {
+		Map<String, String> rsaKeyMap = RsaUtils.createRsaKeys();
+		String publicKey = rsaKeyMap.get("public");
+		String privateKey = rsaKeyMap.get("private");
+		redisService.putRsaPrivateKey(publicKey, privateKey);
+		return publicKey;
+	}
+	--3、RedisService层
+	public void putRsaPrivateKey(String publicKey, String privateKey) {
+		String key = DigestUtils.md5DigestAsHex(publicKey.getBytes()); // 固定key长度
+		opsForValue.set(RSA_PRIVATEKEY_KEY + key, privateKey, Duration.ofSeconds(RSA_PRIVATEKEY_EXPIRES_IN));
+	}
